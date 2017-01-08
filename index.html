@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<style>
+
+.node circle {
+  fill: #999;
+}
+
+.node text {
+  font: 10px sans-serif;
+}
+
+.node--internal circle {
+  fill: #555;
+}
+
+.node--internal text {
+  text-shadow: 0 1px 0 #fff, 0 -1px 0 #fff, 1px 0 0 #fff, -1px 0 0 #fff;
+}
+
+.link {
+  fill: none;
+  stroke: #555;
+  stroke-opacity: 0.4;
+  stroke-width: 1.5px;
+}
+
+.arc {
+  opacity: 0.2;
+}
+
+.selected{
+	visibility:visible;
+}
+
+</style>
+<script src="https://d3js.org/d3.v4.min.js"></script>
+	<div id = "header" >
+		<p>Cladogram created by jmlim</p>
+	</div>
+	<svg width="1260" height="1260"></svg>
+<script>
+
+d3.select("#header")
+		.style("background-color","BlanchedAlmond")
+	.select("p")
+		.style("color","DarkCyan")
+		.style("font-family","Arial")
+		.style("font-weight","bold");
+
+
+var svg = d3.select("svg"),
+    width = +svg.attr("width"),
+    height = +svg.attr("height"),
+    g = svg.append("g").attr("transform", "translate(" + (width / 2 + 40) + "," + (height / 2 + 90) + ")");
+
+var stratify = d3.stratify()
+    .parentId(function(d) { return d.id.substring(0, d.id.lastIndexOf(".")); });
+
+var tree = d3.tree()
+    .size([360, 450])
+    .separation(function(a, b) { return (a.parent == b.parent ? 1 : 2) / a.depth; });
+
+var dat;
+
+d3.csv("test.csv", function(error, data) {
+
+  if (error) throw error;
+
+  var root = tree(stratify(data));
+  dat = root;
+  var link = g.selectAll(".link")
+    .data(root.descendants().slice(1))
+    .enter().append("path")
+      .attr("class", "link")
+      .attr("d", function(d) {
+        return "M" + project(d.x, d.y)
+            + "C" + project(d.x, (d.y + d.parent.y) / 2)
+            + " " + project(d.parent.x, (d.y + d.parent.y) / 2)
+            + " " + project(d.parent.x, d.parent.y);
+      });
+
+  var node = g.selectAll(".node")
+    .data(root.descendants())
+    .enter().append("g")
+      .attr("class", function(d) { return "node" + (d.children ? " node--internal" : " node--leaf"); })
+      .attr("transform", function(d) { return "translate(" + project(d.x, d.y) + ")"; });
+
+	node.append("circle")
+		.attr("r", function(d) {
+			if(d.data.pval == "" || d.data.pval =="-") return 1.5;
+			else return parseFloat(d.data.value)*2;
+		})
+		.style("fill",function(d){
+			if(d.data.pval == "" || d.data.pval =="-") return;
+			else return d.data.group == "New_group_1" ? "red" : "blue";
+		})
+		.style("opacity",0.4)
+		.on("mouseover",nodeover)
+		.on("mouseout",nodeout)
+		.on("click",nodeClick);
+
+});
+
+function project(x, y) {
+  var angle = (x - 90) / 180 * Math.PI, radius = y;
+  return [radius * Math.cos(angle), radius * Math.sin(angle)];
+}
+
+function nodeover(d, i){
+
+	if(d.data.pval != "" && d.data.pval !="-"){
+		
+		d3.select(this)
+			.transition().duration(200)
+			.attr("r",function(d) { return parseFloat(d.data.value)*3 })
+			.style("stroke","black").style("stroke-width","2px");
+
+		var len = d.id.split(".").length;
+
+		var textLabel = d3.select(this.parentNode)
+		
+		showText(textLabel,d,i,true);
+		showClade(d,i,true);
+	}
+}
+
+function nodeout(d, i){
+	if(d.data.pval != "" && d.data.pval !="-"){
+		d3.select(this)
+			.transition().duration(200)
+			.attr("r",function(d) { return parseFloat(d.data.value)*2 })
+			.style("stroke","");
+			
+		d3.select("path#clade").remove();
+		d3.select("text#taxonName").remove();
+   }
+}
+
+function nodeClick(d, i){
+	if(d3.select("path#clade" + i)._groups[0][0] == null){
+		showClade(d,i,false);
+	} else {
+		d3.select("path#clade" + i).remove();
+	}
+	if(d3.select("text#taxonName" + i)._groups[0][0] == null){
+		var textLabel = d3.select(this.parentNode);
+		showText(textLabel,d,i,false);
+	} else {
+		d3.select("text#taxonName" + i).remove();
+	}
+}
+
+function showClade(d, i, isOver){
+	if(d.data.pval != "" && d.data.pval !="-"){
+
+		if(d.depth >= 2){
+			var leaveslist = d.leaves();
+			var innerR = d.y;
+			var outerR;
+			var startAng;
+			var endAng;
+
+			for(var j=0; j<leaveslist.length; j++) {
+				if(j == 0) {
+					outerR = leaveslist[j].y;
+					startAng = leaveslist[j].x;
+					endAng = leaveslist[j].x;
+				} else{
+					if(outerR < leaveslist[j].y) outerR = leaveslist[j].y;
+					if(startAng > leaveslist[j].x) startAng = leaveslist[j].x;
+					if(endAng < leaveslist[j].x) endAng = leaveslist[j].x;
+				}
+			}
+		}
+
+		var arc = d3.arc()
+			.innerRadius( innerR )
+			.outerRadius( outerR )
+			.startAngle( startAng / 180 * Math.PI )
+            .endAngle( endAng  / 180 * Math.PI );
+		
+		if(isOver){
+			g.append("path")
+				.attr("d", arc)
+				.attr("id","clade")
+				.attr("class","arc")
+				.style("fill",d.data.group == "New_group_1" ? "red" : "blue");
+		} else {
+			g.append("path")
+				.attr("d", arc)
+				.attr("id","clade" + i)
+				.attr("class","arc")
+				.style("fill",d.data.group == "New_group_1" ? "red" : "blue");
+		}
+	}
+}
+
+function showText(textLabel,d,i,isOver){
+	if(isOver){
+		return textLabel.append("text")
+			.attr("id","taxonName")
+			.attr("dy", ".31em")
+			.attr("x", d.x < 180 === !d.children ? 6 : -6)
+			.style("font-size","8px")
+			.style("text-anchor", d.x < 180 === !d.children ? "start" : "end" )
+			.attr("transform", "rotate(" + (d.x < 180 ? d.x - 90 : d.x + 90) + ")")
+			.text( d.id.substring(d.id.lastIndexOf(".") + 1 ));attr("id","taxonName");
+	} else {
+		return textLabel.append("text")
+			.attr("id","taxonName" + i)
+			.attr("dy", ".31em")
+			.attr("x", d.x < 180 === !d.children ? 6 : -6)
+			.style("font-size","8px")
+			.style("text-anchor", d.x < 180 === !d.children ? "start" : "end" )
+			.attr("transform", "rotate(" + (d.x < 180 ? d.x - 90 : d.x + 90) + ")")
+			.text( d.id.substring(d.id.lastIndexOf(".") + 1 ));attr("id","taxonName");
+	}
+}
+
+</script>
